@@ -22,7 +22,6 @@
  */
 
 #include "slcan_shell.h"
-#include "buffers.h"
 #include "usart.h"
 #include "systick-utils.h"
 #include "led.h"
@@ -49,7 +48,7 @@ static uint32_t hex2bin[] = {
 static char msg2type[] = { 't', 'r', 'T', 'R' };
 
 // TODO: implement USART baud rate change via U command
-static uint32_t u2baud[] = { 230400, 115200, 57600, 38400, 19200, 9600, 2400, 460800, 921600, 1000000 };
+static const uint32_t u2baud[] = { 230400, 115200, 57600, 38400, 19200, 9600, 2400, 460800, 921600, 1000000 };
 
 static volatile int32_t parsing = 0;
 
@@ -57,7 +56,7 @@ static volatile int32_t can_timestamp_on = 0;
 
 static CanTxMsg tx;
 
-int32_t print_can(CanRxMsg *rx, char* buf, int32_t len)
+int32_t print_can(union CanBuffer *rx, char* buf, int32_t len)
 {
 	if (len < 34) {
 		return -1;
@@ -65,34 +64,40 @@ int32_t print_can(CanRxMsg *rx, char* buf, int32_t len)
 
 	char *cbuf = buf+1;
 
-	int32_t msgtype = (rx->RTR > 0);
-	if (rx->IDE > 0) {
+	// Check if message is remote type (>0 is Remote Request)
+	int32_t msgtype = ((0x02 & rx->mailbox.RIR) > 0);
+
+	if ((0x04 & rx->mailbox.RIR) > 0) {
 		msgtype += 2; // Upper case for Extended ID
 	}
 
 	*cbuf++ = msg2type[msgtype];
 
 	int32_t i;
-	if (rx->IDE > 0) {
+	uint32_t can_id;
+
+	if ((0x04 & rx->mailbox.RIR) > 0) {
 		// Extended ID, CAN2B, print 8 Hex characters
+		can_id = (uint32_t)0x1FFFFFFF & (rx->mailbox.RIR >> 3);
 		i = 8;
 		while (i--) {
-			*cbuf++ = bin2hex[(rx->ExtId >> (4*i)) & 0x0F];
+			*cbuf++ = bin2hex[(can_id >> (4*i)) & 0x0F];
 		}
 	} else {
-		// Extended ID, CAN2A, print 3 Hex characters
+		// Standard ID, CAN2A, print 3 Hex characters
+		can_id = (uint32_t)0x000007FF & (rx->mailbox.RIR >> 21);
 		i = 3;
 		while (i--) {
-			*cbuf++ = bin2hex[(rx->StdId >> (4*i)) & 0x0F];
+			*cbuf++ = bin2hex[(can_id >> (4*i)) & 0x0F];
 		}
 	}
 
-	if (rx->RTR == 0) {
+	if ((0x02 & rx->mailbox.RIR) == 0) {
 		// Data
-		*cbuf++ = bin2hex[rx->DLC & 0x0F];
-		for (i=0; i<rx->DLC; i++) {
-			*cbuf++ = bin2hex[rx->Data[i] >> 4];
-			*cbuf++ = bin2hex[rx->Data[i] & 0x0F];
+		*cbuf++ = bin2hex[rx->layout.RDTR & 0x0F];
+		for (i=0; i<(int32_t)(rx->layout.RDTR & 0x0F); i++) {
+			*cbuf++ = bin2hex[rx->layout.data[i] >> 4];
+			*cbuf++ = bin2hex[rx->layout.data[i] & 0x0F];
 		}
 	} else {
 		*cbuf++ = '0';
@@ -160,7 +165,7 @@ static void send_bell()
 
 static int32_t convert_hex2bin(const char *stream, uint32_t *res, uint32_t len)
 {
-	int32_t i;
+	uint32_t i;
 	char *str = stream;
 	uint32_t ret = 0;
 

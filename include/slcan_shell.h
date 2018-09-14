@@ -33,6 +33,7 @@
 #define DB_SLCAN_VER_LEN 6
 
 #include "stm32f10x_can.h"
+#include "buffers.h"
 
 /**
  * Convert incoming CAN message into Lawicel representation. First byte of the buffer
@@ -43,7 +44,7 @@
  * @param max lenght of the buffer (should be >=34 bytes)
  * @return 0 if ok, error code otherwise
  */
-int32_t print_can(CanRxMsg *, char*, int32_t);
+int32_t print_can(union CanBuffer *, char*, int32_t);
 
 /**
  * Checks if there's ongoing UART input parsing. During parsing output buffer should not be filled,

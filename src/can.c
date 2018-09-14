@@ -121,11 +121,6 @@ int open_can()
 	// Configure DMA NVIC
 	NVIC->IP[CAN_RX_DMA_IRQ] = 0x00;
 	NVIC->ISER[CAN_RX_DMA_IRQ >> 0x05] = (uint32_t) 0x01 << (CAN_RX_DMA_IRQ & (uint8_t)0x1F);
-	// Configure DMA for Mem2mem
-	RCC->AHBENR |= CAN_RX_DMA_CLK;
-	CAN_RX_DMA_CH->CCR = 0;
-	// Mem2mem, High priority, Increment memory source and destination buffer, transfer complete interrupt enabled
-	CAN_RX_DMA_CH->CCR = (DMA_CCR1_MEM2MEM | DMA_CCR1_PL_1 | DMA_CCR1_MINC | DMA_CCR1_PINC | DMA_CCR1_TCIE);
 
 	return 0;
 }
@@ -146,25 +141,7 @@ void CAN1_RX0_IRQHandler(void)
 #endif
 {
 	blink_green();
-	CAN_Receive(CAN1, CAN_FIFO0, &rx_msg); // Requires Standard Peripherals library
-
-	while (((CAN_RX_DMA->ISR & CAN_RX_DMA_TX_FLAG) > 0)); // Wait for previous DMA to complete if there's any
-
-	CAN_RX_DMA_CH->CPAR = (uint32_t) &rx_msg;
-	CAN_RX_DMA_CH->CMAR = (uint32_t) &can_rx_buf.rx[can_rx_buf.write];
-	CAN_RX_DMA_CH->CNDTR = sizeof(CanRxMsg);
-
-	CAN_RX_DMA->IFCR |= CAN_RX_DMA_IFCR_CLEAR;
-	CAN_RX_DMA_CH->CCR |= DMA_CCR1_EN;//*/
-}
-
-void CAN_RX_DMA_IRQ_H(void)
-{
-	if ((CAN_RX_DMA->ISR & CAN_RX_DMA_TX_FLAG) > 0) {
-		// Transfer complete
-		can_rx_buf.write = ((can_rx_buf.write+1) & CANBUFLEN);
-
-		CAN_RX_DMA_CH->CCR &= ~DMA_CCR1_EN;
-		CAN_RX_DMA->IFCR |= CAN_RX_DMA_IFCR_CLEAR;
-	}
+	can_rx_buf.rx[can_rx_buf.write].mailbox = CAN1->sFIFOMailBox[0]; // Copy FIFO0 mailbox to buffer
+	CAN1->RF0R |= CAN_RF0R_RFOM0; // Release FIFO0
+	can_rx_buf.write = ((can_rx_buf.write+1) & CANBUFLEN);
 }

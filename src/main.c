@@ -37,7 +37,7 @@
 #include "debug_uart.h"
 #endif
 
-const char *hello = "Starting \"Darau, Ble\" implementation of Lawicel SLCAN\r\n";
+const char *hello = "Starting \"Darau, Ble\" implementation of Lawicel SLCAN, v0.0.2\r\n";
 
 int main(int argc, char* argv[])
 {

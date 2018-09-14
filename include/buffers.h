@@ -26,8 +26,8 @@
 
 #include "stm32f10x_can.h"
 
-#define CANBUFLEN 63
-#define STREAM_UART 63
+#define CANBUFLEN 255
+#define STREAM_UART 255
 #define UARTINLEN 64
 // (sizeof("T1111222281122334455667788EA5F\r")+1) and plus first member is length (like in Pascal, heh)
 #define UBUFLEN 34
@@ -35,9 +35,20 @@
 #define CAN_RW_DIFF(w, r) ((w-r) & CANBUFLEN)
 #define UART_RW_DIFF(w, r) ((w-r) & UBUFLEN)
 
+typedef struct {
+	uint32_t RIR;
+	uint32_t RDTR;
+	uint8_t data[8];
+} can_data_layout_t;
+
+union CanBuffer {
+	CAN_FIFOMailBox_TypeDef mailbox;
+	can_data_layout_t layout;
+};
+
 
 typedef struct {
-	CanRxMsg rx[CANBUFLEN+1];
+	union CanBuffer rx[CANBUFLEN+1];
 	volatile uint32_t read;
 	volatile uint32_t write;
 } can_buf_t;
