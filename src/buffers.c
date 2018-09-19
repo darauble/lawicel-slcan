@@ -24,5 +24,5 @@
 #include "buffers.h"
 
 can_buf_t can_rx_buf;
-char uart_in[UARTINLEN];
+uart_in_buf_t uart_in_buf;
 uart_str_buf uart_out;

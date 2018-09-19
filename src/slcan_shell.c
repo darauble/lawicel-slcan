@@ -32,6 +32,8 @@
 #endif
 
 #define SERIAL_NUM (*(uint32_t*) 0x1FFFF7E8)
+#define TRANSMIT_DONE 0xFF
+#define TRANSMIT_TIMEOUT 100
 
 //#define CAN_SEND_DEBUG
 
@@ -48,7 +50,7 @@ static uint32_t hex2bin[] = {
 static char msg2type[] = { 't', 'r', 'T', 'R' };
 
 // TODO: implement USART baud rate change via U command
-static const uint32_t u2baud[] = { 230400, 115200, 57600, 38400, 19200, 9600, 2400, 460800, 921600, 1000000 };
+//static const uint32_t u2baud[] = { 230400, 115200, 57600, 38400, 19200, 9600, 2400, 460800, 921600, 1000000 };
 
 static volatile int32_t parsing = 0;
 
@@ -166,7 +168,7 @@ static void send_bell()
 static int32_t convert_hex2bin(const char *stream, uint32_t *res, uint32_t len)
 {
 	uint32_t i;
-	char *str = stream;
+	const char *str = stream;
 	uint32_t ret = 0;
 
 	for (i=0; i<len; i++) {
@@ -182,11 +184,14 @@ static int32_t convert_hex2bin(const char *stream, uint32_t *res, uint32_t len)
 	return 0;
 }
 
+
+// TODO: move out USART reading into interrupt, check timeout separately
 void handle_shell()
 {
 	static int32_t bufpos = 0;
 	static int32_t start_millis = 0;
 
+	char *uart_in = uart_in_buf.uart_in[uart_in_buf.write];
 	char c;
 	int read;
 
@@ -200,6 +205,13 @@ void handle_shell()
 		uart_in[bufpos++] = c;
 		LED_ON(LED_BLUE);
 	} else {
+		if (parsing == 1 && (millis() - start_millis > 50)) {
+			// Timeout in parsing, maybe some error
+			bufpos = 0;
+			parsing = 0;
+			send_bell();
+			LED_OFF(LED_BLUE);
+		}
 		return;
 	}
 
@@ -208,15 +220,57 @@ void handle_shell()
 		send_bell();
 		bufpos = 0;
 		return;
+#ifdef __DEBUG_UART_ZZ__
+		print_usart("Buffer overrun\r\n");
+#endif
 	}
 
-	int32_t res;
-	int32_t dlc_pos;
-	uint32_t conv_val;
-	uint32_t i, timeout;
-	uint8_t mbox;
-
 	if (c == S_CR || c == S_NL) {
+		// Handle also input "by hand" in terminal
+		uart_in_buf.write = (uart_in_buf.write + 1) & UARTINSIZE;
+
+		parsing = 0;
+		bufpos = 0; // Reset buffer in any case when CR/NL received
+	} else if (millis() - start_millis > 50) {
+		// Timeout in parsing, maybe some error
+		bufpos = 0;
+		parsing = 0;
+		send_bell();
+		LED_OFF(LED_BLUE);
+	}
+}
+
+static uint8_t last_mbox = TRANSMIT_DONE;
+static uint32_t last_send_ts;
+void handle_can_send()
+{
+	if (last_mbox != TRANSMIT_DONE) {
+		// Message was sent previously, check status
+		if (CAN_TransmitStatus(CAN1, last_mbox) != CAN_TxStatus_Pending) {
+			// Ok, transmission complete
+			last_mbox = TRANSMIT_DONE;
+			send_cr(); // OK
+		} else if (millis()-last_send_ts >= TRANSMIT_TIMEOUT) {
+			CAN_CancelTransmit(CAN1, last_mbox);
+			last_mbox = TRANSMIT_DONE;
+			send_bell(); // Error
+#ifdef __DEBUG_UART__
+			dbg_print("Failed to send CAN message\r\n");
+#endif
+		} else {
+			// Allow timeout
+			return;
+		}
+	}
+
+
+	if (((uart_in_buf.write - uart_in_buf.read) & UARTINSIZE) > 0) {
+		int32_t res;
+		int32_t dlc_pos;
+		uint32_t conv_val;
+
+		char *uart_in = uart_in_buf.uart_in[uart_in_buf.read];
+
 #ifdef __DEBUG_UART__
 		uart_in[bufpos] = 0;
 		dbg_print(uart_in);
@@ -225,7 +279,7 @@ void handle_shell()
 		uint32_t start, end;
 		start = DWT_CYCCNT;
 #endif
-		// Handle also input "by hand" in terminal
+
 		switch(uart_in[0]) {
 			case 'T':
 			case 't':
@@ -285,22 +339,8 @@ void handle_shell()
 					dbg_print_buf();
 #endif
 					/*******************************/
-					for (i=0; i<CAN_RETRIES; i++) {
-						timeout = 1000;
-						mbox = CAN_Transmit(CAN1, &tx);
-						while(CAN_TransmitStatus(CAN1, mbox) == CAN_TxStatus_Pending && --timeout);
-						if (timeout > 0) {
-							break;
-						} else {
-							CAN_CancelTransmit(CAN1, mbox);
-						}
-					}
-
-					if (i < CAN_RETRIES) {
-						send_cr();
-					} else {
-						send_bell(); // Ultimate transmission fail
-					}
+						last_mbox = CAN_Transmit(CAN1, &tx);
+						last_send_ts = millis();
 				} else {
 					send_bell();
 				}
@@ -355,8 +395,7 @@ void handle_shell()
 				send_bell();
 			break;
 		}
-
-		bufpos = 0; // Reset buffer in any case when CR/NL received
+		uart_in_buf.read = (uart_in_buf.read + 1) & UARTINSIZE; // Next buffer in the row
 		parsing = 0; // Also reset parsing flag so output could be enabled
 		LED_OFF(LED_BLUE);
 #ifdef __DEBUG_UART__
@@ -364,11 +403,7 @@ void handle_shell()
 		snprintf(dbg_buf, DBG_BUF_LEN, "Parsing cycles: %lu, %lu, %lu\r\n", start, end, end - start);
 		dbg_print_buf();
 #endif
-	} else if (millis() - start_millis > 10) {
-		// Timeout in parsing, maybe some error
-		bufpos = 0;
-		parsing = 0;
-		send_bell();
-		LED_OFF(LED_BLUE);
+		// End of processing
+
 	}
 }

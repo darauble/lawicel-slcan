@@ -28,6 +28,7 @@
 
 #define CANBUFLEN 255
 #define STREAM_UART 255
+#define UARTINSIZE 15 // Count of input strings (+1) for reading USART
 #define UARTINLEN 64
 // (sizeof("T1111222281122334455667788EA5F\r")+1) and plus first member is length (like in Pascal, heh)
 #define UBUFLEN 34
@@ -60,8 +61,14 @@ typedef struct {
 	volatile uint32_t curpos;
 } uart_str_buf;
 
+typedef struct {
+	char uart_in[UARTINSIZE+1][UARTINLEN];
+	volatile uint32_t read;
+	volatile uint32_t write;
+} uart_in_buf_t;
+
 extern can_buf_t can_rx_buf;
-extern char uart_in[UARTINLEN];
+extern uart_in_buf_t uart_in_buf;
 extern uart_str_buf uart_out;
 
 

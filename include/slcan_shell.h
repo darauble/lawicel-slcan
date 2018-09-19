@@ -67,5 +67,9 @@ void handle_uart_output();
  */
 void handle_shell();
 
+/**
+ * Function to be called periodically to check if there is UART buffer filled with messages to be sent.
+ */
+void handle_can_send();
 
 #endif /* PRINTER_PARSER_H_ */

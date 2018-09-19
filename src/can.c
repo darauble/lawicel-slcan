@@ -52,9 +52,12 @@ static CanRxMsg rx_msg;
 int open_can()
 {
 	// Configure NVIC for CAN
-	SCB->AIRCR = AIRCR_VECTKEY_MASK | NVIC_PriorityGroup_1;
+	/*SCB->AIRCR = AIRCR_VECTKEY_MASK | NVIC_PriorityGroup_1;
 	NVIC->IP[CAN1_RX_IRQ_CH] = 0x00;
-	NVIC->ISER[CAN1_RX_IRQ_CH >> 0x05] = (uint32_t) 0x01 << (CAN1_RX_IRQ_CH & (uint8_t)0x1F);
+	NVIC->ISER[CAN1_RX_IRQ_CH >> 0x05] = (uint32_t) 0x01 << (CAN1_RX_IRQ_CH & (uint8_t)0x1F);*/
+
+	NVIC_SetPriority(CAN1_RX_IRQ_CH, 0);
+	NVIC_EnableIRQ(CAN1_RX_IRQ_CH);
 
 	// Configure IOs for CAN
 	RCC->APB2ENR |= RCC_APB2ENR_AFIOEN; // Enable Alternative IO

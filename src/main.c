@@ -37,7 +37,7 @@
 #include "debug_uart.h"
 #endif
 
-const char *hello = "Starting \"Darau, Ble\" implementation of Lawicel SLCAN, v0.0.2\r\n";
+const char *hello = "Starting \"Darau, Ble\" implementation of Lawicel SLCAN, v0.0.3\r\n";
 
 int main(int argc, char* argv[])
 {
@@ -87,6 +87,8 @@ int main(int argc, char* argv[])
 		handle_uart_output();
 
 		handle_shell();
+
+		handle_can_send();
 	}
 
 	return 0;
